@@ -112,9 +112,9 @@ class WFRP_Utility
     let allFlaws = Object.values(this.flawList());
     for (let prop of properties)
     {
-      if (allQualities.includes(prop.split(" ")[0]))
+      if (allQualities.includes(this.parsePropertyName(prop)))
         qualities.push(prop);
-      else if (allFlaws.includes(prop.split(" ")[0]))
+      else if (allFlaws.includes(this.parsePropertyName(prop)))
         flaws.push(prop);
       else
         special.push(prop);
@@ -209,6 +209,10 @@ class WFRP_Utility
    */
   static async findSkill(skillName)
   {
+    // First try world items
+    let worldItem = game.items.entities.filter(i => i.type == "skill" && i.name == skillName)[0];
+    if (worldItem) return worldItem
+
     let skillList = [];
     let packs = game.packs.filter(p => p.metadata.tag == "skill")
     for (let pack of packs)
@@ -222,12 +226,12 @@ class WFRP_Utility
       if (searchResult)
       {
         let dbSkill;
-        await pack.getEntity(searchResult.id).then(packSkill => dbSkill = packSkill);
+        await pack.getEntity(searchResult._id).then(packSkill => dbSkill = packSkill);
         dbSkill.data.name = skillName; // This is important if a specialized skill wasn't found. Without it, <Skill ()> would be added instead of <Skill (Specialization)>
         return dbSkill;
       }
     }
-    throw "Could not find skill (or specialization of) " + skillName + " in compendum"
+    throw "Could not find skill (or specialization of) " + skillName + " in compendum or world"
 
   }
 
@@ -248,6 +252,10 @@ class WFRP_Utility
    */
   static async findTalent(talentName)
   {
+    // First try world items
+    let worldItem = game.items.entities.filter(i => i.type == "talent" && i.name == talentName)[0];
+    if (worldItem) return worldItem
+
     let talentList = [];
     let packs = game.packs.filter(p => p.metadata.tag == "talent")
     for (let pack of packs)
@@ -261,12 +269,12 @@ class WFRP_Utility
       if (searchResult)
       {
         let dbTalent;
-        await pack.getEntity(searchResult.id).then(packTalent => dbTalent = packTalent);
+        await pack.getEntity(searchResult._id).then(packTalent => dbTalent = packTalent);
         dbTalent.data.name = talentName; // This is important if a specialized talent wasn't found. Without it, <Talent ()> would be added instead of <Talent (Specialization)>
         return dbTalent;
       }
     }
-    throw "Could not find talent (or specialization of) " + talentName + " in compendium"
+    throw "Could not find talent (or specialization of) " + talentName + " in compendium or world"
   }
 
 
@@ -301,7 +309,7 @@ class WFRP_Utility
         await pack.getIndex().then(index => itemList = index);
         let searchResult = itemList.find(t => t.name == itemName)
         if (searchResult)
-          return await pack.getEntity(searchResult.id)
+          return await pack.getEntity(searchResult._id)
       }
     }
 
@@ -311,7 +319,7 @@ class WFRP_Utility
       await p.getIndex().then(index => itemList = index);
       let searchResult = itemList.find(t => t.name == itemName)
       if (searchResult)
-        return await p.getEntity(searchResult.id)
+        return await p.getEntity(searchResult._id)
     }
   }
 
@@ -359,7 +367,7 @@ class WFRP_Utility
    */
   static _calculateAdvCost(currentAdvances, type)
   {
-    let index = Math.ceil((currentAdvances / 5) - 1);
+    let index = Math.floor(currentAdvances / 5);
     index = index < 0 ? 0 : index; // min 0
 
     if (index >= WFRP4E.xpCost[type].length)
@@ -475,7 +483,7 @@ class WFRP_Utility
     effectList = effectList.map(function (effect)
     {
       // Numeric condition = Bleeding 3
-      let isNumeric = !isNaN(effect[effect.indexOf(".") - 1])
+      let isNumeric = !isNaN(effect[effect.lastIndexOf(".") - 1])
       // Add numeric condition to existing condition if available, otherwise, add it
       if (isNumeric)
       {
@@ -551,9 +559,9 @@ class WFRP_Utility
       propertyDescr = Object.assign(duplicate(WFRP4E.qualityDescriptions), WFRP4E.flawDescriptions),
       propertyKey;
 
-    property = property.replace(/,/g, '').trim();
+    property = this.parsePropertyName(property.replace(/,/g, '').trim());
 
-    propertyKey = WFRP_Utility.findKey(property.split(" ")[0], properties)
+    propertyKey = WFRP_Utility.findKey(property, properties)
 
     let propertyDescription = `<b>${property}:</b><br>${propertyDescr[propertyKey]}`;
     propertyDescription = propertyDescription.replace("(Rating)", property.split(" ")[1])
@@ -570,13 +578,27 @@ class WFRP_Utility
   }
 
   /**
+   * Helper function to easily find the property name
+   * // Todo: regex?
+   * @param {String} property 
+   */
+  static parsePropertyName(property)
+  {
+      property = property.trim();
+      if (!isNaN(property[property.length-1]))
+         return property.substring(0, property.length-2).trim()
+      else
+        return property;
+  }
+
+  /**
    * Helper function to set up chat data (set roll mode and content).
    * 
    * @param {String} content 
    * @param {String} modeOverride 
    * @param {Boolean} isRoll 
    */
-  static chatDataSetup(content, modeOverride, isRoll = false)
+  static chatDataSetup(content, modeOverride, isRoll = false, forceWhisper)
   {
     let chatData = {
       user: game.user._id,
@@ -588,7 +610,12 @@ class WFRP_Utility
 
     if (["gmroll", "blindroll"].includes(chatData.rollMode)) chatData["whisper"] = ChatMessage.getWhisperIDs("GM");
     if (chatData.rollMode === "blindroll") chatData["blind"] = true;
-    else if (chatData.rollMode === "selfroll") chatData["whisper"] = game.user._id;
+    else if (chatData.rollMode === "selfroll") chatData["whisper"] = [game.user];
+
+    if ( forceWhisper ) { // Final force !
+      chatData["speaker"] = ChatMessage.getSpeaker();
+      chatData["whisper"] = ChatMessage.getWhisperRecipients(forceWhisper);
+    }
 
     return chatData;
   }
@@ -649,7 +676,7 @@ class WFRP_Utility
     for (let sk of skills)
     {
       let skillItem = undefined;
-      await pack.getEntity(sk.id).then(skill => skillItem = skill);
+      await pack.getEntity(sk._id).then(skill => skillItem = skill);
       if (skillItem.data.data.advanced.value == "bsc")
       {
         if (skillItem.data.data.grouped.value != "noSpec")
@@ -676,11 +703,11 @@ class WFRP_Utility
     let trappingsIndex = [];
     await trappings.getIndex().then(index => trappingsIndex = index);
 
-    let money = trappingsIndex.filter(t => t.name.toLowerCase() == "gold crown" || t.name.toLowerCase() == "silver shilling" || t.name.toLowerCase() == "brass penny")
+    let money = trappingsIndex.filter(t => t.name.toLowerCase() == game.i18n.localize("NAME.GC").toLowerCase() || t.name.toLowerCase() == game.i18n.localize("NAME.SS").toLowerCase() || t.name.toLowerCase() == game.i18n.localize("NAME.BP").toLowerCase())
 
     for (let m of money)
     {
-      let moneyItem = await trappings.getEntity(m.id);
+      let moneyItem = await trappings.getEntity(m._id);
       moneyItems.push(moneyItem.data);
     }
     return moneyItems
@@ -706,6 +733,8 @@ class WFRP_Utility
         return `<a class = "symptom-tag" data-symptom="${id}"><i class='fas fa-user-injured'></i> ${name ? name : id}</a>`
       case "Condition":
         return `<a class = "condition-chat" data-cond="${id}"><i class='fas fa-user-injured'></i> ${name ? name : id}</a>`
+      case "Pay":
+        return `<a class = "pay-link" data-pay="${id}"><i class="fas fa-coins"></i> ${name ? name : id}</a>`
     }
   }
 
@@ -716,34 +745,26 @@ class WFRP_Utility
    */
   static handleTableClick(event)
   {
-    // Sin from wrath of the gods if available
-    let sin = Number($(event.currentTarget).attr("data-sin"));
-    let modifier = sin * 10 || 0;
+    let modifier = parseInt($(event.currentTarget).attr("data-modifier")) || 0;
     let html;
     let chatOptions = this.chatDataSetup("", game.settings.get("core", "rollMode"))
 
     if (event.button == 0)
     {
-      if (event.target.text == game.i18n.localize("ROLL.CritCast"))
+      if (event.target.text.trim() == game.i18n.localize("ROLL.CritCast"))
       {
         html = WFRP_Tables.criticalCastMenu($(event.currentTarget).attr("data-table"));
       }
 
-      else if (event.target.text == game.i18n.localize("ROLL.TotalPower"))
+      else if (event.target.text.trim() == game.i18n.localize("ROLL.TotalPower"))
         html = WFRP_Tables.restrictedCriticalCastMenu();
 
       // Not really a table but whatever
       else if ($(event.currentTarget).attr("data-table") == "misfire")
       {
         let damage = $(event.currentTarget).attr("data-damage")
-        html = `<b>${game.i18n.localize("Misfire")}</b>: ${game.i18n.localize("ROLL.MisfireText1")} ${damage} ${game.i18n.localize("ROLL.MisfireText2")}`;
+        html = game.i18n.format("ROLL.Misfire", {damage : damage});
       }
-      else if (sin)
-        html = WFRP_Tables.formatChatRoll($(event.currentTarget).attr("data-table"),
-        {
-          modifier: modifier,
-          maxSize: false
-        });
       else
         html = WFRP_Tables.formatChatRoll($(event.currentTarget).attr("data-table"),
         {
@@ -843,6 +864,19 @@ class WFRP_Utility
     })
   }
 
+
+    /**
+   * Handle a payment entity link
+   * 
+   * @param {Object} event clicke event
+   */
+  static handlePayClick(event)
+  {
+    let payString = $(event.currentTarget).attr("data-pay")
+    if (game.user.isGM)
+      MarketWfrp4e.generatePayCard(payString);
+  }
+
   /**
    * Retrieves the item being requested by the macro from the selected actor,
    * sending it to the correct setup____ function to be rolled.
@@ -850,7 +884,7 @@ class WFRP_Utility
    * @param {String} itemName name of item being rolled
    * @param {String} itemType type of item ("weapon", "spell", etc)
    */
-  static rollItemMacro(itemName, itemType)
+  static rollItemMacro(itemName, itemType, bypassData)
   {
     const speaker = ChatMessage.getSpeaker();
     let actor;
@@ -860,7 +894,7 @@ class WFRP_Utility
     // Not technically an item, used for convenience
     if (itemType == "characteristic")
     {
-      return actor.setupCharacteristic(itemName)
+      return actor.setupCharacteristic(itemName, bypassData)
     }
     else
     {
@@ -874,29 +908,215 @@ class WFRP_Utility
     switch (item.type)
     {
       case "weapon":
-        return actor.setupWeapon(item)
+        return actor.setupWeapon(item, bypassData)
       case "spell":
-        return actor.spellDialog(item)
+        return actor.spellDialog(item, bypassData)
       case "prayer":
-        return actor.setupPrayer(item)
+        return actor.setupPrayer(item, bypassData)
       case "trait":
-        return actor.setupTrait(item)
+        return actor.setupTrait(item, bypassData)
       case "skill":
-        return actor.setupSkill(item)
+        return actor.setupSkill(item, bypassData)
     }
   }
 
   static async toggleMorrslieb()
   {
-    if (game.modules.find(m => m.id ==  "fxmaster" && m.active))
-    {
-      ui.notifications.notify("Morrslieb not available with FX-Master installed. Use the module's color filter")
-      return;
-    }
+    console.log("toggleMorrslieb()")
     let morrsliebActive = canvas.scene.getFlag("wfrp4e", "morrslieb")
-    await canvas.scene.setFlag("wfrp4e", "morrslieb", !morrsliebActive)
-    game.socket.emit("system.wfrp4e", {})
-    canvas.draw();
-  }
+    morrsliebActive = !morrsliebActive
+    await canvas.scene.setFlag("wfrp4e", "morrslieb", morrsliebActive)
 
+    if (game.modules.get("fxmaster") && game.modules.get("fxmaster").active)
+    {
+      let filters = canvas.scene.getFlag('fxmaster', 'filters')
+      if (!filters) filters = {};
+      if (morrsliebActive)
+      {
+        filters["morrslieb"] = {
+          type: "color",
+          options: {
+            red: CONFIG.Morrslieb.red,
+            green: CONFIG.Morrslieb.green,
+            blue: CONFIG.Morrslieb.blue
+            }
+          }
+        }
+        else 
+        {
+          filters["morrslieb"] = {
+            type: "color",
+            options: {
+              red: 1,
+              green: 1,
+              blue: 1
+              }
+            }
+        }
+        canvas.scene.setFlag('fxmaster', 'filters', null).then(()=> {
+          canvas.scene.setFlag('fxmaster', 'filters', filters);
+        })
+
+      }
+      else 
+      {
+        game.socket.emit("system.wfrp4e", {
+          type : "morrslieb"
+        })
+        canvas.draw();
+      }
+    }
+
+  static async PlayContextAudio(item, context)
+  {
+    if (!game.settings.get("wfrp4e", "soundEffects"))
+      return
+      
+    let type = item.type
+    let files
+    await FilePicker.browse("user", `systems/wfrp4e/sounds/${type}`).then(resp => {
+      files = resp.files
+    })
+
+    let globalSound = false;
+    let group;
+    if(context.type == "hit")
+      group = "hit"
+    else if(context.type == "money")
+      group = "money"
+    else 
+    {
+      switch(type)
+      {
+      case "weapon":
+        group = item.data.weaponGroup.value.toLowerCase()
+        if(group == game.i18n.localize("SPEC.Crossbow").toLowerCase())
+          group = context.type == "equip" ? "weapon_bow" : "weapon_xbow"
+        else if(group == game.i18n.localize("SPEC.Bow").toLowerCase())
+          group = "weapon_bow"
+        else if(group == game.i18n.localize("SPEC.Fencing").toLowerCase() || group == game.i18n.localize("SPEC.Parry").toLowerCase() || group == game.i18n.localize("SPEC.TwoHanded").toLowerCase())
+          group = context.equip == "fire" ? "weapon-" : "weapon_sword" 
+        else if(group == game.i18n.localize("SPEC.Flail").toLowerCase() && context.equip == "fire")
+          group = "weapon_flail"
+        else if((group == game.i18n.localize("SPEC.Blackpowder").toLowerCase() || group == game.i18n.localize("SPEC.Engineering").toLowerCase()))
+          group = "weapon_gun"
+        else if((group == game.i18n.localize("SPEC.Explosives").toLowerCase()))
+          group = "weapon_bomb"
+        else
+          group = "weapon-"
+        break;
+      case "armour":
+        group = item.data.armorType.value;
+        group = group.includes("Leather") ? "leather" : group;
+        break;
+      case "trapping":
+        group = item.data.trappingType.value.includes("clothing") ? "cloth" : "item";
+        break;
+      case "spell":
+        group = "spell";
+        break;
+      case "prayer":
+        group = "prayer";
+        break;
+      case "round":
+        group = "round";
+        globalSound = true;
+        break;
+      case "skill":
+        group = "skill";
+        break;
+      }
+    }
+    files = files.filter(f => f.includes(group))
+
+    if(context.type == "weapon")
+    {
+      globalSound = true;
+      if(context.equip == "miss")
+        files = files.filter(f => f.includes("-miss"))
+      else if(context.equip == "misfire")
+        files = files.filter(f => f.includes("-misfire"))
+      else if(context.equip == "fire")
+      {
+        if(group == "weapon_xbow" || group == "weapon_bow" || group == "weapon_gun")
+          files = files.filter(f => f.includes("-fire"))
+        else if(group != "weapon_bomb")
+          files = files.filter(f => f.includes("-swing"))
+      }
+    }
+    if(context.type == "ammo")
+    {
+      files = files.filter(f => f.includes("-load"))
+    }
+    if(context.type == "equip")
+    {
+      if (context.equip || group.includes("weapon") || group == "item")
+      {
+        files = files.filter(f => f.includes("-equip"))
+      }
+      else
+      {
+        files = files.filter(f => f.includes("deequip"))
+      }
+    }
+
+    if(context.type == "spell")
+    {
+      if(context.equip == "memorize")
+        files = files.filter(f => f.includes("-memorize"))
+      else if(context.equip == "unmemorize")
+        files = files.filter(f => f.includes("unmemorize"))
+      else if(context.equip == "cast")
+      {
+        files = files.filter(f => f.includes("-cast"))
+        globalSound = true;
+      }
+      else
+      {
+        files = files.filter(f => f.includes("miscast"))
+        globalSound = true;
+      }
+    }
+
+    if(context.type == "prayer")
+    {
+      globalSound = true;
+      if(context.equip == "cast")
+        files = files.filter(f => f.includes("-cast"))
+      else
+        files = files.filter(f => f.includes("miscast"))
+    }
+
+    if(context.type == "hit")
+    {
+      globalSound = true;
+      if(context.equip == "crit")
+        files = files.filter(f => f.includes("crit"))
+      else
+        files = files.filter(f => f.includes("normal"))
+    }
+
+    if(type == "skill")
+    {
+      if(context.type == "consumeAlcohol")
+        files = files.filter(f => f.includes(`consumeAlcohol-${context.equip == "fail" ? 'fail' : 'success'}`))
+      if(context.type == "stealth")    
+        files = files.filter(f => f.includes(`stealth-${context.equip == "fail" ? 'fail' : 'success'}`))
+    }
+
+    let file = files[new Roll(`1d${files.length}-1`).roll().total]
+    console.log(`wfrp4e | Playing Sound: ${file}`)
+    AudioHelper.play({src : file}, globalSound)
+  }
 }
+
+
+  Hooks.on("renderFilePicker", (app, html, data) => {
+    if (data.target.includes("systems") || data.target.includes("modules"))
+    {
+      html.find("input[name='upload']").css("display" , "none")
+      label = html.find(".upload-file label")
+      label.text("Upload Disabled");
+      label.attr("title", "Upload disabled while in system directory. DO NOT put your assets within any system or module folder.");
+    }
+  })  

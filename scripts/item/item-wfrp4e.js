@@ -32,7 +32,7 @@ class ItemWfrp4e extends Item
   {
     const data = this[`_${this.data.type}ExpandData`]();
     data.description.value = data.description.value || "";
-    data.description.value = enrichHTML(data.description.value, htmlOptions);
+    data.description.value = TextEditor.enrichHTML(data.description.value, htmlOptions);
     return data;
   }
 
@@ -48,7 +48,7 @@ class ItemWfrp4e extends Item
   _moneyExpandData()
   {
     const data = duplicate(this.data.data);
-    data.properties = [`${game.localize("SHEET.PenniesValue")}: ${data.coinValue.value}`];
+    data.properties = [`${game.i18n.localize("ITEM.PenniesValue")}: ${data.coinValue.value}`];
     return data;
   }
 
@@ -251,6 +251,18 @@ class ItemWfrp4e extends Item
     let chatData = duplicate(this.data);
     chatData["properties"] = properties
 
+    //Check if the posted item should have availability/pay buttons
+    chatData.hasPrice = "price" in chatData.data;
+    if(chatData.hasPrice)
+    {
+      if(isNaN(chatData.data.price.gc))
+        chatData.data.price.gc = 0;
+      if(isNaN(chatData.data.price.ss))
+        chatData.data.price.ss = 0;
+      if(isNaN(chatData.data.price.bp))
+        chatData.data.price.bp = 0;
+    }
+
     // Don't post any image for the item (which would leave a large gap) if the default image is used
     if (chatData.img.includes("/blank.png"))
       chatData.img = null;
@@ -279,7 +291,7 @@ class ItemWfrp4e extends Item
     const data = duplicate(this.data.data);
     let properties = [
     `<b>${game.i18n.localize("ITEM.TrappingType")}</b>: ${WFRP4E.trappingCategories[data.trappingType.value]}`,
-    `<b>${game.i18n.localize("Price")}</b>: ${data.price.gc} GC, ${data.price.ss} SS, ${data.price.bp} BP`,
+    `<b>${game.i18n.localize("Price")}</b>: ${data.price.gc} ${game.i18n.localize("MARKET.Abbrev.GC")}, ${data.price.ss} ${game.i18n.localize("MARKET.Abbrev.SS")}, ${data.price.bp} ${game.i18n.localize("MARKET.Abbrev.BP")}`,
     `<b>${game.i18n.localize("Encumbrance")}</b>: ${data.encumbrance.value}`,
     `<b>${game.i18n.localize("Availability")}</b>: ${WFRP4E.availability[data.availability.value]}`
     ]
@@ -448,7 +460,7 @@ class ItemWfrp4e extends Item
   {
     const data = duplicate(this.data.data);
     let properties = [
-      `<b>${game.i18n.localize("Price")}</b>: ${data.price.gc} GC, ${data.price.ss} SS, ${data.price.bp} BP`,
+      `<b>${game.i18n.localize("Price")}</b>: ${data.price.gc} ${game.i18n.localize("MARKET.Abbrev.GC")}, ${data.price.ss} ${game.i18n.localize("MARKET.Abbrev.SS")}, ${data.price.bp} ${game.i18n.localize("MARKET.Abbrev.BP")}`,
       `<b>${game.i18n.localize("Encumbrance")}</b>: ${data.encumbrance.value}`,
       `<b>${game.i18n.localize("Availability")}</b>: ${WFRP4E.availability[data.availability.value]}`
     ]
@@ -495,7 +507,7 @@ class ItemWfrp4e extends Item
   {
     const data = duplicate(this.data.data);
     let properties = [
-      `<b>${game.i18n.localize("Price")}</b>: ${data.price.gc} GC, ${data.price.ss} SS, ${data.price.bp} BP`,
+      `<b>${game.i18n.localize("Price")}</b>: ${data.price.gc} ${game.i18n.localize("MARKET.Abbrev.GC")}, ${data.price.ss} ${game.i18n.localize("MARKET.Abbrev.SS")}, ${data.price.bp} ${game.i18n.localize("MARKET.Abbrev.BP")}`,
       `<b>${game.i18n.localize("Encumbrance")}</b>: ${data.encumbrance.value}`,
       `<b>${game.i18n.localize("Availability")}</b>: ${WFRP4E.availability[data.availability.value]}`
     ]
